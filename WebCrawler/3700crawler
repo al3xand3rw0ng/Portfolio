@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+
+import argparse
+import socket
+import ssl
+import sys
+import threading
+from queue import Queue
+
+
+from urllib.parse import urlparse
+from html.parser import HTMLParser
+
+DEFAULT_SERVER = "proj5.3700.network"
+DEFAULT_PORT = 443
+
+
+class Parser(HTMLParser):
+    def __init__(self):
+        HTMLParser.__init__(self)
+        self.links = Queue()
+        self.links.put(f"https://{DEFAULT_SERVER}:{DEFAULT_PORT}/fakebook/")
+        self.csrfmiddlewaretoken = None
+        self.secret_flags = Queue()
+
+    def handle_starttag(self, tag, attrs):
+        """
+        Handle starttag of html
+        :param tag:
+        :param attrs:
+        :return:
+        """
+        for attr in attrs:
+            if not attr[0] is None and not attr[1] is None:
+                if attr[0] == "href" and "/fakebook/" in attr[1]:
+                    if attr[1] not in self.links.queue:
+                        self.links.put(attr[1])
+                if attr[1] == "csrfmiddlewaretoken":
+                    value = attrs[2][1]
+                    self.csrfmiddlewaretoken = value
+
+    def handle_data(self, data):
+        """
+        Handle data of html
+        :param data:
+        :return:
+        """
+
+        if "FLAG:" in data:
+            flag = data.split(': ')[1]
+            print(flag)
+            self.secret_flags.put(flag)
+
+
+class Crawler:
+    def __init__(self, args):
+        self.flags_found_lock = threading.Lock()
+        self.flags_found = 0
+
+        self.server = args.server
+        self.port = args.port
+        self.username = args.username
+        self.password = args.password
+
+        self.csrf_middleware_token = None
+        self.csrf_token = None
+        self.session_id = None
+        self.status_code = None
+        self.location = None
+        self.cookie_response = {'csrftoken': [], 'sessionid': []}
+        self.content_length = 0
+
+        self.visited = []
+        self.not_visited = Queue()
+
+        self.secret_flags = []
+        self.parser = Parser()
+
+    def login(self):
+        """
+        Login to server using a GET and POST request
+        :return:
+        """
+
+        login_form = f'https://{self.server}:{self.port}/accounts/login/?next=/fakebook/'
+        self.get(login_form)
+
+        login_message = (f"username={self.username}&password={self.password}"
+                         f"&csrfmiddlewaretoken={self.parser.csrfmiddlewaretoken}&next=")
+        self.post(login_form, login_message)
+
+    def get(self, url):
+        """
+        sends GET request to the server
+        :param url: The URL page to download from server
+        :return:
+        """
+        parsed_url = urlparse(url)
+
+        host_path = "proj5.3700.network"
+        get_request = f'GET {parsed_url.path} HTTP/1.1\r\n'
+        host = f'Host: {host_path}\r\n'
+        content_length = f"Content-Length: {0}\r\n"
+        connection = "Connection: keep-alive\r\n"
+
+        request = f'{get_request}{host}{connection}{content_length}\r\n'
+        if len(self.cookie_response) > 0:
+            cookie_header = f"Cookie: csrftoken={self.csrf_token}; sessionid={self.session_id}\r\n"
+            request = f"{get_request}{host}{cookie_header}{connection}{content_length}\r\n"
+
+        return self.send(request)
+
+    def post(self, url, message):
+        """
+        Send a POST request to the server
+        :param url:
+        :param message:
+        :return:
+        """
+        parsed_url = urlparse(url)
+        host_path = parsed_url.netloc.split(':')[0]
+
+        post_request = f'POST {parsed_url.path} HTTP/1.1\r\n'
+        host = f'Host: {host_path}\r\n'
+        content_type = "Content-Type: application/x-www-form-urlencoded\r\n"
+        content_length = f"Content-Length: {len(message)}\r\n"
+        connection = "Connection: keep-alive\r\n"
+
+        request = f"{post_request}{host}{content_type}{content_length}{connection}\r\n{message}"
+        if len(self.cookie_response) > 0:
+            cookie_header = f"Cookie: csrftoken={self.csrf_token}; sessionid={self.session_id}\r\n"
+            request = f"{post_request}{host}{content_type}{content_length}{connection}{cookie_header}\r\n{message}"
+
+        return self.send(request)
+
+    def parse_http(self, message):
+        """
+        Parse http header messages
+        :param message:
+        :return:
+        """
+        message_split = message.strip().split('\r\n\r\n')
+        headers = message_split[0]
+        headers_split = headers.split("\r\n")
+
+        response = {}
+        status = headers_split[0]
+        status_code = status.split(" ")[1]
+        self.status_code = int(status_code)
+
+        for line in headers_split[1:]:
+            if line.startswith('set-cookie'):
+                key_value = line.split(";")[0]
+                cookie = key_value.strip().split("=")
+                if "csrftoken" in cookie[0]:
+                    self.csrf_token = cookie[1].strip()
+                    self.cookie_response['csrftoken'] = cookie[1].strip()
+                    response['csrftoken'] = cookie[1].strip()
+                elif "sessionid" in cookie[0]:
+                    self.session_id = cookie[1].strip()
+                    self.cookie_response['sessionid'] = cookie[1].strip()
+                    response['sessionid'] = cookie[1].strip()
+                else:
+                    raise ValueError(f"Invalid cookie")
+
+            if line.startswith("location"):
+                location = line.split(":")[1]
+                if '/fakebook/' in location:
+                    self.cookie_response['location'] = location
+                    self.location = location
+                    response['location'] = location
+
+            if line.startswith("content-length"):
+                length = line.split(":")[1]
+                self.content_length = int(length)
+
+        return response
+
+    def feed_parser(self, message):
+        """
+        Sends message to the html parser
+        :param message: message to parse
+        :return:
+        """
+        self.parser.feed(message)
+        self.not_visited.queue = self.parser.links.queue
+
+
+    def send(self, message):
+        """
+        Send a message to the server
+        :param message: message to send
+        :return:
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        sock = context.wrap_socket(sock, server_hostname=self.server)
+
+        sock.connect((self.server, self.port))
+        sock.send(message.encode('ascii'))
+
+        response = b''
+
+        while True:
+            data = sock.recv(1)
+            response += data
+            if '\r\n\r\n' in response.decode('ascii'):
+                self.parse_http(response.decode('ascii'))
+                break
+
+        html_response = b''
+        while len(html_response) != self.content_length:
+            html_response += sock.recv(self.content_length)
+
+        self.feed_parser(html_response.decode('ascii'))
+
+        sock.close()
+        if len(self.parser.secret_flags.queue) == 5:
+            with self.flags_found_lock:
+                self.flags_found = 5
+                self.not_visited.queue.clear()
+
+    def find_flags(self):
+        """
+        Uses threading to run the program
+        :return:
+        """
+        self.login()
+        threads = []
+        for _ in range(5):
+            thread = threading.Thread(target=self.run)
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+            sys.exit(0)
+
+    def run(self):
+        """
+        Runs the program
+        :return:
+        """
+        #root = f"https://{self.server}:{self.port}/fakebook/" 53
+        #self.not_visited.put(root)
+        while len(self.not_visited.queue) > 0:
+            page = self.not_visited.get()
+            if page not in self.visited:
+                self.get(page)
+                #print("page", page)
+                # 200: ok, 302: redirect, 403: forbidden, 404: not found, 503: service unavailable
+                if self.status_code == 200:
+                    self.visited.append(page)
+                elif self.status_code == 302:
+                    self.visited.append(page)
+                    if self.cookie_response['location'] not in self.not_visited.queue:
+                        self.not_visited.put(self.cookie_response['location'])
+                elif self.status_code == 403:
+                    self.visited.append(page)
+                elif self.status_code == 404:
+                    self.visited.append(page)
+                elif self.status_code == 400:
+                    self.visited.append(page)
+                elif self.status_code == 503:
+                    self.not_visited.put(page)
+                    if page in self.visited:
+                        self.visited.remove(page)
+
+
+# secret flag format: <h3 class='secret_flag' style="color:red">FLAG: 64-characters-of-random-alphanumerics</h3>
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='crawl Fakebook')
+    parser.add_argument('-s', dest="server", type=str, default=DEFAULT_SERVER, help="The server to crawl")
+    parser.add_argument('-p', dest="port", type=int, default=DEFAULT_PORT, help="The port to use")
+    parser.add_argument('username', type=str, help="The username to use")
+    parser.add_argument('password', type=str, help="The password to use")
+    args = parser.parse_args()
+    sender = Crawler(args)
+    sender.find_flags()
+    sys.exit(0)
