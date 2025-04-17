@@ -1,0 +1,15 @@
+.answer_question_meta {
+  color: #bbbbbb;
+}
+
+.ansButton {
+  margin: 2% 0 4% 2%;
+}
+
+.large-text {
+  font-size: 1.5em !important;
+}
+
+.vote-container * {
+  font-size: inherit; /* Ensures all child elements inherit the font size */
+}

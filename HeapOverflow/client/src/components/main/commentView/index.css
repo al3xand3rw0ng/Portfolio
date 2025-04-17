@@ -1,0 +1,19 @@
+/* All the CSS related to answers Page*/
+.comment {
+    display: flex;
+    flex-direction: row;
+    border-bottom: #000000 1px solid;
+  }
+  
+  .commentText {
+    width: 75%;
+  }
+  
+  .commentAuthor {
+    margin-left: 5%;
+  }
+  
+  .comment_author {
+    color: green;
+  }
+  

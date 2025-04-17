@@ -1,0 +1,11 @@
+.tag_list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-gap: 80px 20px;
+}
+
+.large-text .bold_title,
+.large-text .tag_list,
+.large-text .toggle-text-size-button {
+  font-size: 1.5em; 
+}

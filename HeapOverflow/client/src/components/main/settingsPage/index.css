@@ -1,0 +1,43 @@
+.settings-container {
+  max-width: 600px;
+  color: black;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: auto;
+  padding-top: 2%;
+  border-radius: 10px;
+}
+
+.settings-box {
+  width: 100%;
+  max-width: 600px;
+  padding: 20px;
+  border-radius: 10px;
+  background-color: #f2f2f2;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+  font-family: Arial, sans-serif;
+}
+
+.settings-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.settings-item {
+  margin-bottom: 10px;
+}
+
+.settingsToggle {
+  height: 40px;
+  width: 80%;
+  border: none;
+  border-radius: 5px;
+  text-align: center;
+  line-height: 40px;
+  font-size: 16px;
+  color: #3090e2;
+  background-color: #dddddd;
+}

@@ -1,0 +1,67 @@
+.sideBarNav {
+  display: flex;
+  flex-direction: column;
+  width: 15%;
+  border-right: 1px solid;
+  padding: 4% 0;
+  align-items: center;
+  transition: all 0.2s ease-in-out;
+}
+
+.menu_button:first-child {
+  margin-top: 0;
+}
+
+.menu_button {
+  height: 40px;
+  width: 80%;
+  margin-top: 20px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: left;
+  color: #3090e2;
+  gap: 8px;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: all 0.2s ease-in-out;
+}
+
+.menu_selected {
+  background: #dddddd;
+}
+
+.menu_with_badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  width: 100%;
+}
+
+.menu_label {
+  flex-grow: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: width 0.2s ease-in-out;
+}
+
+@media (max-width: 768px) {
+  .menu_button {
+    width: 60%; /* Shrink button width */
+  }
+  .menu_label {
+    max-width: 80px; /* Truncate text */
+  }
+}
+
+@media (max-width: 480px) {
+  .menu_button {
+    width: 50%; /* Further shrink button width */
+  }
+  .menu_label {
+    display: none; /* Hide the label completely */
+  }
+}
